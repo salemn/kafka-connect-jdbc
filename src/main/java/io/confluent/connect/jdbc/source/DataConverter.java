@@ -31,6 +31,7 @@ import java.net.URL;
 import java.sql.Blob;
 import java.sql.Clob;
 import java.sql.ResultSet;
+import java.sql.DatabaseMetaData;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.SQLXML;
@@ -54,12 +55,17 @@ public class DataConverter {
     }
   };
 
-  public static Schema convertSchema(String tableName, ResultSetMetaData metadata)
+  public static Schema convertSchema(String tableName, ResultSetMetaData metadata, DatabaseMetaData databaseMetaData,
+                                     String schema)
       throws SQLException {
     // TODO: Detect changes to metadata, which will require schema updates
     SchemaBuilder builder = SchemaBuilder.struct().name(tableName);
     for (int col = 1; col <= metadata.getColumnCount(); col++) {
-      addFieldSchema(metadata, col, builder);
+      ResultSet resultSet = databaseMetaData.getColumns(null, schema, tableName, metadata.getColumnName(col));
+      String defaultValue = null;
+      if (resultSet.next())
+        defaultValue = resultSet.getString("COLUMN_DEF");
+      addFieldSchema(metadata, col, builder, defaultValue);
     }
     return builder.build();
   }
@@ -83,7 +89,7 @@ public class DataConverter {
 
 
   private static void addFieldSchema(ResultSetMetaData metadata, int col,
-                                     SchemaBuilder builder)
+                                     SchemaBuilder builder, String defaultValue)
       throws SQLException {
     // Label is what the query requested the column name be using an "AS" clause, name is the
     // original
@@ -107,7 +113,10 @@ public class DataConverter {
         if (optional) {
           builder.field(fieldName, Schema.OPTIONAL_BOOLEAN_SCHEMA);
         } else {
-          builder.field(fieldName, Schema.BOOLEAN_SCHEMA);
+          if (defaultValue != null) {
+            builder.field(fieldName, SchemaBuilder.bool().defaultValue(Boolean.valueOf(defaultValue)).build());
+          } else
+            builder.field(fieldName, Schema.BOOLEAN_SCHEMA);
         }
         break;
       }
@@ -118,7 +127,11 @@ public class DataConverter {
         if (optional) {
           builder.field(fieldName, Schema.OPTIONAL_INT8_SCHEMA);
         } else {
-          builder.field(fieldName, Schema.INT8_SCHEMA);
+          if (defaultValue != null) {
+            log.warn("schema fieldname : " + fieldName + " value : " + Byte.toString((byte) (Boolean.valueOf(defaultValue) ? 1 : 0)));
+            builder.field(fieldName, SchemaBuilder.int8().defaultValue((byte) (Boolean.valueOf(defaultValue) ? 1 : 0)).build());
+          } else
+            builder.field(fieldName, Schema.INT8_SCHEMA);
         }
         break;
       }
@@ -283,7 +296,21 @@ public class DataConverter {
          * TODO: Postgres handles this differently, returning a string "t" or "f". See the
          * elasticsearch-jdbc plugin for an example of how this is handled
          */
-        colValue = resultSet.getByte(col);
+        byte byteValue = 0;
+        try {
+          if (resultSet.getString(col) != null)
+            byteValue = (byte) (resultSet.getString(col).equals(String.valueOf('f')) ? 0 : 1);
+          else if (struct.schema().field(fieldName).schema().defaultValue() != null) {
+            byteValue = (byte) (struct.schema().field(fieldName).schema().defaultValue());
+          }
+        } catch (Exception psqlException) {
+          if (struct.schema().field(fieldName).schema().defaultValue() != null) {
+            byteValue = (byte) (struct.schema().field(fieldName).schema().defaultValue());
+          } else {
+            throw psqlException;
+          }
+        }
+        colValue = byteValue;
         break;
       }
 
