@@ -128,7 +128,6 @@ public class DataConverter {
           builder.field(fieldName, Schema.OPTIONAL_INT8_SCHEMA);
         } else {
           if (defaultValue != null) {
-            log.warn("schema fieldname : " + fieldName + " value : " + Byte.toString((byte) (Boolean.valueOf(defaultValue) ? 1 : 0)));
             builder.field(fieldName, SchemaBuilder.int8().defaultValue((byte) (Boolean.valueOf(defaultValue) ? 1 : 0)).build());
           } else
             builder.field(fieldName, Schema.INT8_SCHEMA);
