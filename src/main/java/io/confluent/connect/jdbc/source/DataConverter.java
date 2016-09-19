@@ -32,6 +32,7 @@ import java.sql.Blob;
 import java.sql.Clob;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
+import java.sql.DatabaseMetaData;
 import java.sql.SQLException;
 import java.sql.SQLXML;
 import java.sql.Types;
@@ -54,12 +55,18 @@ public class DataConverter {
     }
   };
 
-  public static Schema convertSchema(String tableName, ResultSetMetaData metadata)
+  public static Schema convertSchema(String tableName, ResultSetMetaData metadata, DatabaseMetaData databaseMetaData,
+                                     String schema)
       throws SQLException {
     // TODO: Detect changes to metadata, which will require schema updates
     SchemaBuilder builder = SchemaBuilder.struct().name(tableName);
     for (int col = 1; col <= metadata.getColumnCount(); col++) {
-      addFieldSchema(metadata, col, builder);
+      ResultSet resultSet = databaseMetaData.getColumns(null, schema, tableName, metadata.getColumnName(col));
+      String defaultValue = null;
+      if (resultSet.next())
+        defaultValue = resultSet.getString("COLUMN_DEF");
+      String typeName = resultSet.getString("TYPE_NAME");
+      addFieldSchema(metadata, col, builder, defaultValue, typeName);
     }
     return builder.build();
   }
@@ -71,7 +78,7 @@ public class DataConverter {
     for (int col = 1; col <= metadata.getColumnCount(); col++) {
       try {
         convertFieldValue(resultSet, col, metadata.getColumnType(col), struct,
-                          metadata.getColumnLabel(col));
+                          metadata.getColumnLabel(col), metadata.getColumnTypeName(col));
       } catch (IOException e) {
         log.warn("Ignoring record because processing failed:", e);
       } catch (SQLException e) {
@@ -83,7 +90,7 @@ public class DataConverter {
 
 
   private static void addFieldSchema(ResultSetMetaData metadata, int col,
-                                     SchemaBuilder builder)
+                                     SchemaBuilder builder, String defaultValue, String typeName)
       throws SQLException {
     // Label is what the query requested the column name be using an "AS" clause, name is the
     // original
@@ -118,7 +125,10 @@ public class DataConverter {
         if (optional) {
           builder.field(fieldName, Schema.OPTIONAL_INT8_SCHEMA);
         } else {
-          builder.field(fieldName, Schema.INT8_SCHEMA);
+          if (defaultValue != null) {
+            builder.field(fieldName, SchemaBuilder.int8().defaultValue((byte) (Boolean.valueOf(defaultValue) ? 1 : 0)).build());
+          } else
+            builder.field(fieldName, Schema.INT8_SCHEMA);
         }
         break;
       }
@@ -256,14 +266,26 @@ public class DataConverter {
       case Types.REF:
       case Types.ROWID:
       default: {
-        log.warn("JDBC type {} not currently supported", sqlType);
-        break;
+        switch (typeName) {
+          case "citext":
+          case "jsonb": {
+            if (optional) {
+              builder.field(fieldName, Schema.OPTIONAL_STRING_SCHEMA);
+            } else {
+              builder.field(fieldName, Schema.STRING_SCHEMA);
+            }
+            break;
+          }
+          default:
+            log.warn("JDBC type {} not currently supported", sqlType);
+            break;
+        }
       }
     }
   }
 
   private static void convertFieldValue(ResultSet resultSet, int col, int colType,
-                                        Struct struct, String fieldName)
+                                        Struct struct, String fieldName, String typeName)
       throws SQLException, IOException {
     final Object colValue;
     switch (colType) {
@@ -422,9 +444,17 @@ public class DataConverter {
       case Types.REF:
       case Types.ROWID:
       default: {
-        // These are not currently supported, but we don't want to log something for every single
-        // record we translate. There will already be errors logged for the schema translation
-        return;
+        switch (typeName) {
+          case "citext":
+          case "jsonb": {
+            colValue = resultSet.getString(col);
+            break;
+          }
+          default:
+            // These are not currently supported, but we don't want to log something for every single
+            // record we translate. There will already be errors logged for the schema translation
+            return;
+        }
       }
     }
 
