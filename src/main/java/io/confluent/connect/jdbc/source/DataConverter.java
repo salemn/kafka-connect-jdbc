@@ -114,7 +114,10 @@ public class DataConverter {
         if (optional) {
           builder.field(fieldName, Schema.OPTIONAL_BOOLEAN_SCHEMA);
         } else {
-          builder.field(fieldName, Schema.BOOLEAN_SCHEMA);
+          if (defaultValue != null) {
+            builder.field(fieldName, SchemaBuilder.bool().defaultValue(Boolean.valueOf(defaultValue)).build());
+          } else
+            builder.field(fieldName, Schema.BOOLEAN_SCHEMA);
         }
         break;
       }
@@ -305,7 +308,21 @@ public class DataConverter {
          * TODO: Postgres handles this differently, returning a string "t" or "f". See the
          * elasticsearch-jdbc plugin for an example of how this is handled
          */
-        colValue = resultSet.getByte(col);
+        byte byteValue = 0;
+        try {
+          if (resultSet.getString(col) != null)
+            byteValue = (byte) (resultSet.getString(col).equals(String.valueOf('f')) ? 0 : 1);
+          else if (struct.schema().field(fieldName).schema().defaultValue() != null) {
+            byteValue = (byte) (struct.schema().field(fieldName).schema().defaultValue());
+          }
+        } catch (Exception psqlException) {
+          if (struct.schema().field(fieldName).schema().defaultValue() != null) {
+            byteValue = (byte) (struct.schema().field(fieldName).schema().defaultValue());
+          } else {
+            throw psqlException;
+          }
+        }
+        colValue = byteValue;
         break;
       }
 
