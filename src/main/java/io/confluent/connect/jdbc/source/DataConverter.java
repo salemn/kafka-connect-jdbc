@@ -463,6 +463,7 @@ public class DataConverter {
       default: {
         switch (typeName) {
           case "citext":
+          case "varchar":
           case "jsonb": {
             colValue = resultSet.getString(col);
             break;
