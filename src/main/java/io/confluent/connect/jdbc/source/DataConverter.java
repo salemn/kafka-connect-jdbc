@@ -271,6 +271,7 @@ public class DataConverter {
       default: {
         switch (typeName) {
           case "citext":
+          case "varchar":
           case "jsonb": {
             if (optional) {
               builder.field(fieldName, Schema.OPTIONAL_STRING_SCHEMA);
