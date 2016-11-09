@@ -231,6 +231,7 @@ public class JdbcSourceTask extends SourceTask {
         log.debug("Returning {} records for {}", results.size(), querier.toString());
         return results;
       } catch (SQLException e) {
+        e.printStackTrace();
         log.error("Failed to run query for table {}: {}", querier.toString(), e);
         // clear out the query if we had errors, this also handles backoff in case of errors
         if (querier != null) {
