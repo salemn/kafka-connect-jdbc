@@ -121,7 +121,7 @@ public class TimestampIncrementingTableQuerier extends TableQuerier {
       builder.append(JdbcUtils.quoteString(incrementingColumn, quoteString));
       builder.append(" > ?");
       builder.append(") OR ");
-      builder.append(JdbcUtils.quoteString("greatest(added," + timestampColumn + ")", quoteString));
+      builder.append("greatest(added," + timestampColumn + ")");
       builder.append(" > ?)");
       builder.append(" ORDER BY ");
       builder.append(JdbcUtils.quoteString(timestampColumn, quoteString));
